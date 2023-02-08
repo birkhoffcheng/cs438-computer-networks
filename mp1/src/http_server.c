@@ -122,6 +122,11 @@ void handle_request(int fd) {
 		goto free_request;
 	}
 
+	if (S_ISDIR(file_stat.st_mode)) {
+		write(fd, "HTTP/1.0 403 Forbidden\r\n\r\n", 26);
+		goto free_request;
+	}
+
 	serve_file(fd, path);
 
 free_request:
