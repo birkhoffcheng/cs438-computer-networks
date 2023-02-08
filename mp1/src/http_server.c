@@ -1,128 +1,105 @@
-/*
-** server.c -- a stream socket server demo
-*/
-
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
+#include <unistd.h>
+#include <libgen.h>
+#include <stdbool.h>
+#include <sys/sendfile.h>
 
-#define PORT "3490"  // the port users will be connecting to
+#define BACKLOG 1024
+#define DEFAULT_PORT 3490
 
-#define BACKLOG 10	 // how many pending connections queue will hold
-
-void sigchld_handler(int s)
-{
-	while(waitpid(-1, NULL, WNOHANG) > 0);
+int server_fd;
+void interrupt(int signum) {
+	fprintf(stderr, "Caught signal %d: %s\n", signum, strsignal(signum));
+	fprintf(stderr, "Closing socket %d\n", server_fd);
+	close(server_fd);
+	exit(EXIT_SUCCESS);
 }
 
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
-{
-	if (sa->sa_family == AF_INET) {
-		return &(((struct sockaddr_in*)sa)->sin_addr);
-	}
-
-	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+void collect_zombies(int signum) {
+	int ws;
+	pid_t pid = wait(&ws);
+	fprintf(stderr, "Child %d exited with status %d\n", pid, WEXITSTATUS(ws));
 }
 
-int main(void)
-{
-	int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
-	struct addrinfo hints, *servinfo, *p;
-	struct sockaddr_storage their_addr; // connector's address information
-	socklen_t sin_size;
-	struct sigaction sa;
-	int yes=1;
-	char s[INET6_ADDRSTRLEN];
-	int rv;
+void handle_request(int fd) {
+	close(fd);
+}
 
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE; // use my IP
+int main(int argc, char **argv) {
+	struct sockaddr_in server_address, client_address;
+	size_t client_address_length = sizeof(client_address);
+	int client_socket_number;
+	int server_port = DEFAULT_PORT;
 
-	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
+	signal(SIGINT, interrupt);
+	signal(SIGTERM, interrupt);
+	signal(SIGCHLD, collect_zombies);
+
+	if (argc > 1) {
+		server_port = atoi(argv[1]);
+		if (server_port <= 0 || server_port > 65535) {
+			fprintf(stderr, "port number should be between 1 and 65535\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
-	// loop through all the results and bind to the first we can
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("server: socket");
-			continue;
-		}
-
-		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
-				sizeof(int)) == -1) {
-			perror("setsockopt");
-			exit(1);
-		}
-
-		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd);
-			perror("server: bind");
-			continue;
-		}
-
-		break;
+	server_fd = socket(PF_INET, SOCK_STREAM, 0);
+	if (server_fd < 0) {
+		perror("socket");
+		exit(errno);
 	}
 
-	if (p == NULL)  {
-		fprintf(stderr, "server: failed to bind\n");
-		return 2;
+	int socket_option = 1;
+	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &socket_option, sizeof(socket_option)) == -1) {
+		perror("setsockopt");
+		exit(errno);
 	}
 
-	freeaddrinfo(servinfo); // all done with this structure
+	memset(&server_address, 0, sizeof(server_address));
+	server_address.sin_family = AF_INET;
+	server_address.sin_addr.s_addr = INADDR_ANY;
+	server_address.sin_port = htons(server_port);
 
-	if (listen(sockfd, BACKLOG) == -1) {
+	if (bind(server_fd, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
+		perror("bind");
+		exit(errno);
+	}
+
+	if (listen(server_fd, BACKLOG) == -1) {
 		perror("listen");
-		exit(1);
+		exit(errno);
 	}
 
-	sa.sa_handler = sigchld_handler; // reap all dead processes
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART;
-	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
-		perror("sigaction");
-		exit(1);
-	}
+	fprintf(stderr, "Listening on port %d\n", server_port);
 
-	printf("server: waiting for connections...\n");
-
-	while(1) {  // main accept() loop
-		sin_size = sizeof their_addr;
-		new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-		if (new_fd == -1) {
+	while (1) {
+		client_socket_number = accept(server_fd, (struct sockaddr *) &client_address, (socklen_t *) &client_address_length);
+		if (client_socket_number < 0) {
 			perror("accept");
 			continue;
 		}
 
-		inet_ntop(their_addr.ss_family,
-			get_in_addr((struct sockaddr *)&their_addr),
-			s, sizeof s);
-		printf("server: got connection from %s\n", s);
-
-		if (!fork()) { // this is the child process
-			close(sockfd); // child doesn't need the listener
-			if (send(new_fd, "Hello, world!", 13, 0) == -1)
-				perror("send");
-			close(new_fd);
-			exit(0);
+		fprintf(stderr, "Accepted connection from %s on port %d\n", inet_ntoa(client_address.sin_addr), client_address.sin_port);
+		if (fork()) {
+			close(client_socket_number);
 		}
-		close(new_fd);  // parent doesn't need this
+		else {
+			close(server_fd);
+			handle_request(client_socket_number);
+			exit(EXIT_SUCCESS);
+		}
 	}
-
-	return 0;
 }
-
