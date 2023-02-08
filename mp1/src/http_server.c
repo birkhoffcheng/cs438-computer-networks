@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -30,11 +31,103 @@ void interrupt(int signum) {
 
 void collect_zombies(int signum) {
 	int ws;
+	fprintf(stderr, "Caught signal %d: %s\n", signum, strsignal(signum));
 	pid_t pid = wait(&ws);
 	fprintf(stderr, "Child %d exited with status %d\n", pid, WEXITSTATUS(ws));
 }
 
+char **split(char *line, char *delim, size_t *size) {
+	size_t n = 0, sz = 4;
+	char *save = line, *token, **tokens = malloc(sizeof(char *) * sz);
+	while ((token = strtok_r(NULL, delim, &save))) {
+		if (n >= sz) {
+			sz *= 2;
+			tokens = realloc(tokens, sizeof(char *) * sz);
+		}
+		for (; isblank(*token); token++);
+		tokens[n++] = token;
+	}
+	if (size != NULL)
+		*size = n;
+	return tokens;
+}
+
+void serve_file(int fd, char *path) {
+	int file;
+	ssize_t bytes_sent = 0, bytes;
+	struct stat file_stat;
+	char file_size_buffer[32];
+
+	write(fd, "HTTP/1.0 200 OK\r\nContent-Length: ", 33);
+	stat(path, &file_stat);
+	file = snprintf(file_size_buffer, 32, "%ld", file_stat.st_size);
+	write(fd, file_size_buffer, file);
+	write(fd, "\r\n\r\n", 4);
+
+	file = open(path, O_RDONLY);
+	if (file < 0) {
+		perror("open");
+		exit(errno);
+	}
+
+	while (bytes_sent < file_stat.st_size) {
+		bytes = sendfile(fd, file, NULL, file_stat.st_size - bytes_sent);
+		if (bytes < 0) {
+			perror("sendfile");
+			exit(errno);
+		}
+		bytes_sent += bytes;
+	}
+
+	close(file);
+}
+
 void handle_request(int fd) {
+	char read_buffer[BUFSIZ];
+
+	read(fd, read_buffer, BUFSIZ);
+	size_t size;
+	char **lines = split(read_buffer, "\n", &size);
+	if (size == 0) {
+		write(fd, "HTTP/1.0 400 Bad Request\r\n\r\n", 28);
+		goto free_lines;
+	}
+
+	char **request = split(lines[0], " ", &size);
+	if (size < 2 || request[1][0] != '/') {
+		write(fd, "HTTP/1.0 400 Bad Request\r\n\r\n", 28);
+		goto free_request;
+	}
+
+	if (strstr(request[1], "..")) {
+		write(fd, "HTTP/1.0 403 Forbidden\r\n\r\n", 26);
+		goto free_request;
+	}
+
+	if (strcmp(request[0], "GET")) {
+		write(fd, "HTTP/1.0 405 Method Not Allowed\r\n\r\n", 35);
+		goto free_request;
+	}
+
+	char *path = request[1] + 1;
+
+	if (path[0] == '\0') {
+		path[0] = '.';
+		path[1] = '\0';
+	}
+
+	struct stat file_stat;
+	if (stat(path, &file_stat) == -1) {
+		write(fd, "HTTP/1.0 404 Not Found\r\n\r\n", 26);
+		goto free_request;
+	}
+
+	serve_file(fd, path);
+
+free_request:
+	free(request);
+free_lines:
+	free(lines);
 	close(fd);
 }
 
