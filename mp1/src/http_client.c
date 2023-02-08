@@ -27,6 +27,49 @@ void *get_in_addr(struct sockaddr *sa)
 
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
+// char *strncpy( char *dest, const char *src, size_t n )
+void parse_input(char * input, char * ip, char * path, char * port) {
+	char * s;
+	s = input;
+	while (*s != '/') { // this is to skip the http:// before useful inputs
+		s = s + 1;
+	}
+	s = s + 2; // now s is at start of ip
+	char * p;
+	p = s;
+	int port_found = 0;
+	char * port_start;
+	char * path_start;
+	while (*p != 0) {
+		if (*p == ':') { // if there is a port, before : is ip address 
+			strncpy(ip, s, p - s); // record ip address in to buffer
+			port_found = 1;
+			port_start = p;
+		}
+		if (*p == '/') {
+			if (port_found == 1) { // if there is a port we scan over, we are at the / immediately after port, thus, 
+				strncpy(port, port_start, p - port_start);
+				path_start = p;
+				break;
+			} 
+			else 
+			{ // if there is no port, then first / means the end of ip address
+				strncpy(ip, s, p - s);
+				path_start = p;
+				break;
+			}
+		}
+		p++;
+	}
+	while (*p != 0) {
+		p++;
+	}
+	if (port_found == 0) {
+		*port = 80;
+	}
+	strncpy(path, path_start, p - path_start);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -36,6 +79,14 @@ int main(int argc, char *argv[])
 	int rv;
 	char s[INET6_ADDRSTRLEN];
 
+	char path[2048];
+	char ip[2048];
+	char port[8];
+	memset(path, 0, sizeof(path));
+	memset(ip, 0, sizeof(ip));
+	memset(port, 0, sizeof(port));
+	parse_input(argv[1], ip, path, port);
+	//printf("\n %s, %s, %s", path, ip, port);
 	if (argc != 2) {
 	    fprintf(stderr,"usage: client hostname\n");
 	    exit(1);
@@ -91,4 +142,3 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
-
