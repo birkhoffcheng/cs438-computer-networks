@@ -45,11 +45,6 @@ void parse_input(char * input, char * ip, char * path, char * port) {
 	char * port_start;
 	char * path_start;
 	while (*p != 0) {
-		if (*p == ':') { // if there is a port, before : is ip address 
-			strncpy(ip, s, p - s); // record ip address in to buffer
-			port_found = 1;
-			port_start = p + 1;
-		}
 		if (*p == '/') {
 			if (port_found == 1) { // if there is a port we scan over, we are at the / immediately after port, thus, 
 				strncpy(port, port_start, p - port_start);
@@ -63,10 +58,15 @@ void parse_input(char * input, char * ip, char * path, char * port) {
 				break;
 			}
 		}
-		p++;
+		if (*p == ':') { // if there is a port, before : is ip address 
+			strncpy(ip, s, p - s); // record ip address in to buffer
+			port_found = 1;
+			port_start = p + 1;
+		}
+		p += 1;
 	}
 	while (*p != 0) {
-		p++;
+		p += 1;
 	}
 	strncpy(path, path_start, p - path_start);
 }
@@ -157,17 +157,53 @@ int main(int argc, char *argv[])
 	// hanging for server to send its header and the requested file
 	// write the output file to buf
 	memset(buf, 0, sizeof(buf));
-	printf("\n preivous buf is %s", buf);
+
 
 	FILE * output = fopen("output", "w");
-	recv(sockfd, buf, MAXDATASIZE-1, 0);
-	printf("\n%s", buf);
-	char * skip_header = strstr(buf, "\r\n\r\n");
-	printf("\n%s", skip_header);
-	// now all the file is stored inside buf, I can start parsing the output
-	
-	int file_len = strlen(skip_header);
-	fwrite(skip_header + 4, 1, file_len -4, output);
+	int pass_header = 0;
+	int rec = 1;
+	while ((rec = recv(sockfd, buf, MAXDATASIZE - 1, 0)) != 0) {
+		// rec has the number of bytes received
+		if (rec == -1) {
+			return 1;
+		}
+		if (pass_header == 0) {
+			pass_header = 1;
+			char * header_end = strstr(buf, "\r\n\r\n");
+			header_end += 4;
+			fwrite(header_end, 1, buf - header_end + rec, output);
+		}
+		if (pass_header == 1) {
+			fwrite(buf, 1, rec, output);
+		}
+
+	}
+
+	// NOTE: this way causes stack overflow because all of the file in the stack
+	// char rec = 0;
+	// char * buf_start = buf;
+	// char * buf_traverse = buf;
+	// while (1) {
+	// 	rec = recv(sockfd, buf_traverse, MAXDATASIZE-1, 0);
+	// 	if (rec == 0) {
+	// 		break;
+	// 	}
+	// 	char * new = buf_traverse + rec;
+	// 	buf_traverse = new;
+
+	// }
+	// char * skip_header = strstr(buf_start, "\r\n\r\n");
+	// char * content_length = strstr(buf_start, "Content-Length: ");
+	// content_length += 16;
+	// char file_len[8];
+	// memset(file_len, 0, sizeof(file_len));
+	// strncpy(file_len, content_length, skip_header - content_length);
+	// int len = atoi(file_len);
+	// printf("\n file_len is %d", len);
+	// skip_header += 4;
+	// // now all I need to do is to first fetch the header field
+	// // int file_len = strlen(skip_header);
+	// fwrite(skip_header, 1, len , output);
 
 
 
