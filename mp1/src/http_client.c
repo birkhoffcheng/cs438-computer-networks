@@ -160,38 +160,58 @@ int main(int argc, char *argv[])
 
 
 	FILE * output = fopen("output", "w");
-	int pass_header = 0;
-	int rec = 1;
-	while ((rec = recv(sockfd, buf, MAXDATASIZE - 1, 0)) != 0) {
-		// rec has the number of bytes received
-		if (rec == -1) {
-			return 1;
-		}
-		if (pass_header == 0) {
-			pass_header = 1;
-			char * header_end = strstr(buf, "\r\n\r\n");
-			header_end += 4;
-			fwrite(header_end, 1, buf - header_end + rec, output);
-		}
-		if (pass_header == 1) {
-			fwrite(buf, 1, rec, output);
-		}
-
-	}
-
-	// NOTE: this way causes stack overflow because all of the file in the stack
-	// char rec = 0;
-	// char * buf_start = buf;
-	// char * buf_traverse = buf;
-	// while (1) {
-	// 	rec = recv(sockfd, buf_traverse, MAXDATASIZE-1, 0);
-	// 	if (rec == 0) {
-	// 		break;
+	// int traverse_count = 0;
+	// int rec = 1;
+	// while ((rec = recv(sockfd, buf, MAXDATASIZE - 1, 0)) != 0) {
+	// 	// rec has the number of bytes received
+	// 	if (rec == -1) {
+	// 		return 1;
 	// 	}
-	// 	char * new = buf_traverse + rec;
-	// 	buf_traverse = new;
+	// 	char * header_end = strstr(buf, "\r\n\r\n");
+	// 	if (header_end != 0 && traverse_count <= 3) {
+	// 		header_end += 4;
+	// 		printf("%s", header_end);
+	// 		fwrite(header_end, 1, buf - header_end + rec, output);
+	// 	}
+	// 	else {
+	// 		fwrite(buf, 1, rec, output);
+	// 	}
+	// 	traverse_count += 1;
 
 	// }
+
+	// NOTE: this way causes stack overflow because all of the file in the stack
+	char rec = 0;
+	char * buf_start = buf;
+	char * buf_traverse = buf;
+	int header_count = 0;
+	int size_track = 0;
+	while (1) {
+		rec = recv(sockfd, buf_traverse, MAXDATASIZE-1, 0);
+		size_track += rec;
+		if (rec == 0) {
+			break;
+		}
+		char * new = buf_traverse + rec;
+		buf_traverse = new;
+		if (size_track > 300) {
+			if (header_count == 0) {
+				char * header_end = strstr(buf_start, "\r\n\r\n");
+				header_count = 1;
+				header_end += 4;
+				printf("%s", header_end);
+				fwrite(header_end, 1, size_track + buf_start - header_end, output);
+				buf_traverse = buf_start;
+				size_track = 0;
+				memset(buf, 0, sizeof(buf));
+			} else {
+				fwrite(buf_start, 1, size_track, output);
+				size_track = 0;
+				buf_traverse = buf_start;
+				memset(buf, 0, sizeof(buf));
+			}
+		}
+	}
 	// char * skip_header = strstr(buf_start, "\r\n\r\n");
 	// char * content_length = strstr(buf_start, "Content-Length: ");
 	// content_length += 16;
@@ -201,20 +221,13 @@ int main(int argc, char *argv[])
 	// int len = atoi(file_len);
 	// printf("\n file_len is %d", len);
 	// skip_header += 4;
-	// // now all I need to do is to first fetch the header field
-	// // int file_len = strlen(skip_header);
-	// fwrite(skip_header, 1, len , output);
+	// now all I need to do is to first fetch the header field
+	// int file_len = strlen(skip_header);
+	fwrite(buf, 1, size_track , output);
 
 
 
-	// if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-	//     perror("recv");
-	//     exit(1);
-	// }
 
-	// buf[numbytes] = '\0';
-
-	// printf("client: received '%s'\n",buf);
 	fclose(output);
 	close(sockfd);
 
