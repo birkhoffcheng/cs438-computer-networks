@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
 	memset(request, 0, sizeof(request));
 	sprintf(request, GET_HEADER, path);
 	int length = strlen(request);
-	printf("%s", request);
+	printf("\n%s", request);
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -156,8 +156,11 @@ int main(int argc, char *argv[])
 	// now all message sent to server
 	// hanging for server to send its header and the requested file
 	// write the output file to buf
+	memset(buf, 0, sizeof(buf));
+	printf("\n preivous buf is %s", buf);
 	while(1) {
-		int receive_bytes = recv(sockfd, buf, MAXDATASIZE, 0);
+		int receive_bytes = recv(sockfd, buf, MAXDATASIZE-1, 0);
+		printf("\n%s", buf);
 		if (receive_bytes == -1) {
 			perror("receive_file:");
 			return 1;
@@ -167,7 +170,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	// now all the file is stored inside buf, I can start parsing the output
-	FILE * output = fopen("output", "wb");
+	FILE * output = fopen("output", "w");
 	int file_len = strlen(buf);
 	fwrite(buf, 1, file_len, output);
 
