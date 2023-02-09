@@ -158,21 +158,16 @@ int main(int argc, char *argv[])
 	// write the output file to buf
 	memset(buf, 0, sizeof(buf));
 	printf("\n preivous buf is %s", buf);
-	while(1) {
-		int receive_bytes = recv(sockfd, buf, MAXDATASIZE-1, 0);
-		printf("\n%s", buf);
-		if (receive_bytes == -1) {
-			perror("receive_file:");
-			return 1;
-		}
-		if (receive_bytes == 0) {
-			break;
-		}
-	}
-	// now all the file is stored inside buf, I can start parsing the output
+
 	FILE * output = fopen("output", "w");
-	int file_len = strlen(buf);
-	fwrite(buf, 1, file_len, output);
+	recv(sockfd, buf, MAXDATASIZE-1, 0);
+	printf("\n%s", buf);
+	char * skip_header = strstr(buf, "\r\n\r\n");
+	printf("\n%s", skip_header);
+	// now all the file is stored inside buf, I can start parsing the output
+	
+	int file_len = strlen(skip_header);
+	fwrite(skip_header + 4, 1, file_len -4, output);
 
 
 
