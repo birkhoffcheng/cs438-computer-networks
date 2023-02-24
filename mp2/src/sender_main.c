@@ -12,15 +12,24 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/time.h>
+#include "packet.h"
 
 struct sockaddr_in si_other;
 int s, slen;
+struct packet_node *head, *tail;
 
 void diep(char *s) {
 	perror(s);
 	exit(1);
 }
 
+unsigned char *make_packet(uint32_t seq, unsigned char *data, uint32_t len) {
+	unsigned char *buf = malloc(len + HEADER_LENGTH);
+	seq = htonl(seq);
+	memcpy(buf, &seq, sizeof(seq));
+	memcpy(buf + sizeof(seq), data, len);
+	return buf;
+}
 
 void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* filename, unsigned long long int bytesToTransfer) {
 	//Open the file
@@ -46,6 +55,8 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
+	if (bind(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
+		diep("bind");
 
 	/* Send data and receive acknowledgements on s*/
 
