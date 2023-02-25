@@ -8,11 +8,12 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <pthread.h>
-
+#include "packet.h"
 
 
 struct sockaddr_in si_me, si_other;
-int s, slen;
+int s;
+socklen_t slen;
 
 void diep(char *s) {
 	perror(s);
@@ -24,7 +25,9 @@ void diep(char *s) {
 void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 
 	slen = sizeof (si_other);
-
+	FILE *fp = fopen(destinationFile, "wb");
+	if (!fp)
+		diep("fopen");
 
 	if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
 		diep("socket");
@@ -37,11 +40,25 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 	if (bind(s, (struct sockaddr*) &si_me, sizeof (si_me)) == -1)
 		diep("bind");
 
+	unsigned char buf[MTU];
+	ssize_t bytes_written, bytes_read;
+	size_t bytes_received;
+	uint32_t seq, ack;
 
 	/* Now receive data and send acknowledgements */
+	while ((bytes_read = recvfrom(s, buf, MTU, 0, (struct sockaddr *) &si_other, &slen)) > 4) {
+		memcpy(&seq, buf, 4);
+		seq = ntohl(seq);
+		bytes_read -= 4;
+		ack = seq + bytes_read + 1;
+		ack = htonl(ack);
+		sendto(s, &ack, 4, 0, (struct sockaddr *) &si_other, slen);
+		fwrite(buf + 4, 1, bytes_read, fp);
+	}
 
 	close(s);
 	printf("%s received.", destinationFile);
+	fclose(fp);
 	return;
 }
 

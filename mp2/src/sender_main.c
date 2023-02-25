@@ -40,6 +40,12 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
+	unsigned char buf[MTU];
+	unsigned char *packet;
+	size_t bytes_sent, bytes_to_send;
+	ssize_t bytes_written, bytes_read;
+	uint32_t seq, ack;
+
 	/* Determine how many bytes to transfer */
 
 	slen = sizeof (si_other);
@@ -55,13 +61,36 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
-	if (bind(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
-		diep("bind");
+	if (connect(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
+		diep("connect");
 
 	/* Send data and receive acknowledgements on s*/
 
+	while (bytes_sent < bytesToTransfer) {
+		bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - bytes_sent);
+		bytes_to_send = fread(buf, 1, bytes_to_send, fp);
+		packet = make_packet(seq, buf, bytes_to_send);
+		bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
+		free(packet);
+		if (bytes_written < 0)
+			diep("write");
+		bytes_read = read(s, buf, MTU);
+		if (bytes_read >= 4) {
+			memcpy(&ack, buf, 4);
+			ack = ntohl(ack);
+			if (ack == bytes_sent + bytes_to_send + 1) {
+				bytes_sent += bytes_to_send;
+				seq = ack;
+			}
+		}
+	}
+
+	buf[0] = 0;
+	write(s, buf, 1);
+
 	printf("Closing the socket\n");
 	close(s);
+	fclose(fp);
 	return;
 
 }
