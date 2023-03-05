@@ -49,8 +49,11 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 		memcpy(&seq, buf, 4);
 		seq = ntohl(seq);
 		bytes_read -= 4;
-		if (seq != ack) {
+		if (seq > ack) {
 			sendto(s, &ack_n, 4, 0, (struct sockaddr *) &si_other, slen);
+			continue;
+		}
+		else if (seq < ack) {
 			continue;
 		}
 		ack = seq + bytes_read;
