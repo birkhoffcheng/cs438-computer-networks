@@ -44,7 +44,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 	unsigned char *packet;
 	size_t bytes_sent, bytes_to_send;
 	ssize_t bytes_written, bytes_read;
-	uint32_t seq, ack;
+	uint32_t seq = 1, ack;
 
 	/* Determine how many bytes to transfer */
 

@@ -41,23 +41,26 @@ void reliablyReceive(unsigned short int myUDPport, char* destinationFile) {
 		diep("bind");
 
 	unsigned char buf[MTU];
-	ssize_t bytes_written, bytes_read;
-	size_t bytes_received;
-	uint32_t seq, ack;
+	ssize_t bytes_read;
+	uint32_t seq, ack = 1, ack_n = htonl(1);
 
 	/* Now receive data and send acknowledgements */
 	while ((bytes_read = recvfrom(s, buf, MTU, 0, (struct sockaddr *) &si_other, &slen)) > 4) {
 		memcpy(&seq, buf, 4);
 		seq = ntohl(seq);
 		bytes_read -= 4;
-		ack = seq + bytes_read + 1;
-		ack = htonl(ack);
-		sendto(s, &ack, 4, 0, (struct sockaddr *) &si_other, slen);
+		if (seq != ack) {
+			sendto(s, &ack_n, 4, 0, (struct sockaddr *) &si_other, slen);
+			continue;
+		}
+		ack = seq + bytes_read;
+		ack_n = htonl(ack);
+		sendto(s, &ack_n, 4, 0, (struct sockaddr *) &si_other, slen);
 		fwrite(buf + 4, 1, bytes_read, fp);
 	}
 
 	close(s);
-	printf("%s received.", destinationFile);
+	printf("%s received %u bytes\n", destinationFile, ack - 1);
 	fclose(fp);
 	return;
 }
