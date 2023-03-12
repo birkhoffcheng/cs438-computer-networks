@@ -16,7 +16,6 @@
 
 struct sockaddr_in si_other;
 int s, slen;
-struct packet_node *head, *tail;
 
 void diep(char *s) {
 	perror(s);
@@ -40,11 +39,16 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
-	unsigned char buf[MTU];
+	unsigned char *buf = malloc(bytesToTransfer);
 	unsigned char *packet;
 	size_t bytes_sent, bytes_to_send;
 	ssize_t bytes_written, bytes_read;
 	uint32_t seq = 1, ack;
+
+	if (!buf)
+		diep("malloc");
+	fread(buf, 1, bytesToTransfer, fp);
+	fclose(fp);
 
 	/* Determine how many bytes to transfer */
 
@@ -68,8 +72,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 	while (bytes_sent < bytesToTransfer) {
 		bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - bytes_sent);
-		bytes_to_send = fread(buf, 1, bytes_to_send, fp);
-		packet = make_packet(seq, buf, bytes_to_send);
+		packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
 		bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
 		free(packet);
 		if (bytes_written < 0)
@@ -90,7 +93,6 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 	printf("Closing the socket\n");
 	close(s);
-	fclose(fp);
 	return;
 
 }
