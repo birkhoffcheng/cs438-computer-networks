@@ -48,6 +48,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 	uint32_t seq = 1, ack = 1, last_ack = 1, window = MAX_PAYLOAD_SIZE;
 	struct timeval tv;
 	tv.tv_sec = 1;
+	tv.tv_usec = 0;
 
 	if (!buf)
 		diep("malloc");
@@ -69,7 +70,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
-	if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)))
+	if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1)
 		diep("setsockopt");
 
 	if (connect(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
@@ -77,10 +78,10 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 	/* Send data and receive acknowledgements on s*/
 	bool dup_ack;
-	while ((ack - 1) < bytesToTransfer) {
+	while ((last_ack - 1) < bytesToTransfer) {
 		while (seq < ack + window) {
 			bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - (seq - 1));
-			printf("sending packet seq %u window %u\n", seq, window);
+			printf("sending packet seq %u ack %u window %u\n", seq, ack, window);
 			packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
 			bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
 			free(packet);
@@ -93,16 +94,23 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 			if (bytes_read < 4)
 				break;
 			ack = ntohl(ack);
-			if (ack == last_ack) {
-				seq = ack;
+			printf("received ack %u\n", ack);
+			if (ack > last_ack) {
+				last_ack = ack;
+			}
+			else {
+				seq = last_ack;
 				window = max(window / 2, MAX_PAYLOAD_SIZE);
 				dup_ack = true;
 				break;
 			}
-			last_ack = ack;
 		}
 		if (!dup_ack) {
-			window *= 2;
+			// increase sending window
+			if (window < (MAX_PAYLOAD_SIZE * SSTHRESHOLD))
+				window *= 2;
+			else
+				window += MAX_PAYLOAD_SIZE;
 		}
 		if (bytes_read == -1 && errno == EAGAIN) {
 			window = MAX_PAYLOAD_SIZE;
