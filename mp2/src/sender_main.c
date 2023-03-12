@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/time.h>
+#include <errno.h>
 #include "packet.h"
 
 struct sockaddr_in si_other;
@@ -41,9 +42,11 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 	unsigned char *buf = malloc(bytesToTransfer);
 	unsigned char *packet;
-	size_t bytes_sent, bytes_to_send;
+	size_t bytes_to_send;
 	ssize_t bytes_written, bytes_read;
-	uint32_t seq = 1, ack;
+	uint32_t seq = 1, ack = 1, last_ack = 1, window = MAX_PAYLOAD_SIZE;
+	struct timeval tv;
+	tv.tv_sec = 1;
 
 	if (!buf)
 		diep("malloc");
@@ -65,32 +68,47 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
+	if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)))
+		diep("setsockopt");
+
 	if (connect(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
 		diep("connect");
 
 	/* Send data and receive acknowledgements on s*/
 
-	while (bytes_sent < bytesToTransfer) {
-		bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - bytes_sent);
-		packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
-		bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
-		free(packet);
-		if (bytes_written < 0)
-			diep("write");
-		bytes_read = read(s, buf, MTU);
-		if (bytes_read >= 4) {
-			memcpy(&ack, buf, 4);
+	while ((last_ack - 1) < bytesToTransfer) {
+		while (seq < ack + window) {
+			bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - (seq - 1));
+			packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
+			bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
+			free(packet);
+			if (bytes_written < 0)
+				diep("write");
+			seq += bytes_to_send;
+		}
+		while ((bytes_read = read(s, &ack, 4)) > 0) {
+			if (bytes_read < 4)
+				break;
 			ack = ntohl(ack);
-			if (ack == bytes_sent + bytes_to_send + 1) {
-				bytes_sent += bytes_to_send;
+			if (ack == last_ack) {
 				seq = ack;
+				window = max(window / 2, MAX_PAYLOAD_SIZE);
 			}
+			else {
+				window *= 2;
+			}
+			if (ack == seq)
+				break;
+			last_ack = ack;
+		}
+		if (bytes_read == -1 && errno == EAGAIN) {
+			window = MAX_PAYLOAD_SIZE;
 		}
 	}
 
 	buf[0] = 0;
 	write(s, buf, 1);
-
+	free(buf);
 	printf("Closing the socket\n");
 	close(s);
 	return;
