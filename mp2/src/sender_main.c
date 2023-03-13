@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include "packet.h"
 
@@ -110,9 +111,9 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		}
 		if (!dup_ack) {
 			// increase sending window
-			if (window < (MAX_PAYLOAD_SIZE * SSTHRESHOLD))
+			if (window < (MAX_PAYLOAD_SIZE * 20))
 				window *= 2;
-			else
+			else if (window < (MAX_PAYLOAD_SIZE * 250))
 				window += MAX_PAYLOAD_SIZE;
 		}
 		if (bytes_read == -1 && errno == EAGAIN) {
