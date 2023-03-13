@@ -81,6 +81,9 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 	while ((last_ack - 1) < bytesToTransfer) {
 		while (seq < ack + window) {
 			bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - (seq - 1));
+			if (bytes_to_send == 0 ) {
+				break;
+			}
 			printf("sending packet seq %u ack %u window %u\n", seq, ack, window);
 			packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
 			bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
@@ -90,7 +93,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 			seq += bytes_to_send;
 		}
 		dup_ack = false;
-		while (last_ack < seq && (bytes_read = read(s, &ack, 4)) > 0) {
+		while (last_ack < seq && (bytes_read = recvfrom(s, &ack, 4, 0 ,NULL, NULL)) > 0) {
 			if (bytes_read < 4)
 				break;
 			ack = ntohl(ack);
