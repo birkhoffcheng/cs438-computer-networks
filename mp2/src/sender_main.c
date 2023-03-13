@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/time.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -41,6 +42,10 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		printf("Could not open file to send.");
 		exit(1);
 	}
+
+	struct stat file_stat;
+	stat(filename, &file_stat);
+	bytesToTransfer = min(bytesToTransfer, file_stat.st_size);
 
 	unsigned char *buf = malloc(bytesToTransfer);
 	unsigned char *packet;
