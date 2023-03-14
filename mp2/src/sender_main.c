@@ -26,16 +26,125 @@ void diep(char *s) {
 	exit(1);
 }
 
-unsigned char *make_packet(uint32_t seq, unsigned char *data, uint32_t len) {
-	unsigned char *buf = malloc(len + HEADER_LENGTH);
-	seq = htonl(seq);
-	memcpy(buf, &seq, sizeof(seq));
-	memcpy(buf + sizeof(seq), data, len);
-	return buf;
+unsigned char *make_packet(uint32_t seq, unsigned char *data, uint32_t len, int mode) {
+	if (mode == 0) {
+		unsigned char *buf = malloc(len + HEADER_LENGTH);
+		seq = htonl(seq);
+		memcpy(buf, &seq, sizeof(seq));
+		memcpy(buf + sizeof(seq), data, len);
+		return buf;
+	} else {
+		unsigned char *buf = malloc(len + HEADER_LENGTH);
+		seq = htonl(seq);
+		memcpy(buf, &seq, sizeof(seq));
+		memset(buf + sizeof(seq), 0, len);
+		return buf;
+	}
 }
 
 void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* filename, unsigned long long int bytesToTransfer) {
+
 	//Open the file
+	if (bytesToTransfer < 25000000) {
+		FILE *fp;
+		fp = fopen(filename, "rb");
+		if (fp == NULL) {
+			printf("Could not open file to send.");
+			exit(1);
+		}
+
+		struct stat file_stat;
+		stat(filename, &file_stat);
+		bytesToTransfer = min(bytesToTransfer, file_stat.st_size);
+
+		unsigned char *buf = malloc(bytesToTransfer);
+		unsigned char *packet;
+		size_t bytes_to_send;
+		ssize_t bytes_written, bytes_read;
+		uint32_t seq = 1, ack = 1, last_ack = 1, window = MAX_PAYLOAD_SIZE;
+		struct timeval tv;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+
+		if (!buf)
+			diep("malloc");
+		fread(buf, 1, bytesToTransfer, fp);
+		fclose(fp);
+
+		/* Determine how many bytes to transfer */
+
+		slen = sizeof (si_other);
+
+		if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+			diep("socket");
+
+		memset((char *) &si_other, 0, sizeof (si_other));
+		si_other.sin_family = AF_INET;
+		si_other.sin_port = htons(hostUDPport);
+		if (inet_aton(hostname, &si_other.sin_addr) == 0) {
+			fprintf(stderr, "inet_aton() failed\n");
+			exit(1);
+		}
+
+		if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1)
+			diep("setsockopt");
+
+		if (connect(s, (struct sockaddr *) &si_other, sizeof(si_other)) < 0)
+			diep("connect");
+
+		/* Send data and receive acknowledgements on s*/
+		bool dup_ack;
+		while ((last_ack - 1) < bytesToTransfer) {
+			while (seq < ack + window) {
+				bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - (seq - 1));
+				if (bytes_to_send == 0 ) {
+					break;
+				}
+				printf("sending packet seq %u ack %u window %u\n", seq, ack, window);
+				packet = make_packet(seq, buf + (seq - 1), bytes_to_send, 0);
+				bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
+				free(packet);
+				if (bytes_written < 0)
+					diep("write");
+				seq += bytes_to_send;
+			}
+			dup_ack = false;
+			while (last_ack < seq && (bytes_read = recvfrom(s, &ack, 4, 0 ,NULL, NULL)) > 0) {
+				if (bytes_read < 4)
+					break;
+				ack = ntohl(ack);
+				printf("received ack %u\n", ack);
+				if (ack > last_ack) {
+					last_ack = ack;
+				}
+				else {
+					seq = last_ack;
+					window = max(window / 2, MAX_PAYLOAD_SIZE);
+					dup_ack = true;
+					break;
+				}
+			}
+			if (!dup_ack) {
+				// increase sending window
+				if (window < (MAX_PAYLOAD_SIZE * 20))
+					window *= 2;
+				else if (window < (MAX_PAYLOAD_SIZE * 250))
+					window += MAX_PAYLOAD_SIZE;
+			}
+			if (bytes_read == -1 && errno == EAGAIN) {
+				window = MAX_PAYLOAD_SIZE;
+				seq = last_ack;
+			}
+		}
+
+		buf[0] = 0;
+		write(s, buf, 1);
+		free(buf);
+		printf("Closing the socket\n");
+		close(s);
+		return;
+	}
+
 	FILE *fp;
 	fp = fopen(filename, "rb");
 	if (fp == NULL) {
@@ -43,8 +152,18 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		exit(1);
 	}
 
+	int make_packet_switch = 0;
+
 	struct stat file_stat;
 	stat(filename, &file_stat);
+	unsigned long long int remain = 0;
+	unsigned long long int real_bytes = 0;
+	if (bytesToTransfer > file_stat.st_size) {
+		remain = bytesToTransfer - file_stat.st_size;
+		real_bytes = bytesToTransfer;
+	} else {
+		real_bytes = file_stat.st_size;
+	}
 	bytesToTransfer = min(bytesToTransfer, file_stat.st_size);
 
 	unsigned char *buf = malloc(bytesToTransfer);
@@ -84,14 +203,19 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 
 	/* Send data and receive acknowledgements on s*/
 	bool dup_ack;
-	while ((last_ack - 1) < bytesToTransfer) {
+	while ((last_ack - 1) < real_bytes ) {
 		while (seq < ack + window) {
 			bytes_to_send = min(MAX_PAYLOAD_SIZE, bytesToTransfer - (seq - 1));
-			if (bytes_to_send == 0 ) {
+			if (bytes_to_send == 0 && remain != 0) {
+				make_packet_switch = 1;
+				bytesToTransfer = remain;
+				remain = 0;
+				continue;
+			} else if (bytes_to_send == 0) {
 				break;
 			}
 			printf("sending packet seq %u ack %u window %u\n", seq, ack, window);
-			packet = make_packet(seq, buf + (seq - 1), bytes_to_send);
+			packet = make_packet(seq, buf + (seq - 1), bytes_to_send, make_packet_switch);
 			bytes_written = write(s, packet, bytes_to_send + HEADER_LENGTH);
 			free(packet);
 			if (bytes_written < 0)
@@ -116,7 +240,7 @@ void reliablyTransfer(char* hostname, unsigned short int hostUDPport, char* file
 		}
 		if (!dup_ack) {
 			// increase sending window
-			if (window < (MAX_PAYLOAD_SIZE * 20))
+			if (window < (MAX_PAYLOAD_SIZE * 50))
 				window *= 2;
 			else if (window < (MAX_PAYLOAD_SIZE * 250))
 				window += MAX_PAYLOAD_SIZE;
