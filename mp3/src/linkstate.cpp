@@ -7,10 +7,12 @@
 #include <string>
 #include <queue>
 #include <iostream>
+#include <set>
 
 using namespace std;
 
 FILE *fpOut;
+set<int> nodes;
 
 unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
 	FILE *fp = fopen(filename, "r");
@@ -30,6 +32,8 @@ unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
 		}
 		topo[src][dest] = cost;
 		topo[dest][src] = cost;
+		nodes.insert(src);
+		nodes.insert(dest);
 	}
 
 	fclose(fp);
