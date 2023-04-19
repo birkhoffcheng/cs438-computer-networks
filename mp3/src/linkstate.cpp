@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <queue>
 #include <iostream>
 #include <set>
+#include <unordered_set>
 
 using namespace std;
 
@@ -38,6 +40,36 @@ unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
 
 	fclose(fp);
 	return topo;
+}
+
+unordered_map<int, pair<int, int>> dijkstra(unordered_map<int, unordered_map<int, int>> topo, int src) {
+	unordered_map<int, pair<int, int>> dist; // dist[node] = (cost, prev)
+	for (auto node : nodes) {
+		dist[node] = make_pair(INT_MAX, -1);
+	}
+	dist[src].first = 0;
+
+	priority_queue<pair<int, int>> pq;
+	pq.push(make_pair(0, src));
+
+	while (!pq.empty()) {
+		pair<int, int> p = pq.top();
+		pq.pop();
+		int d = p.first;
+		int u = p.second;
+		if (d > dist[u].first) {
+			continue;
+		}
+		for (auto v : topo[u]) {
+			if (dist[v.first].first > dist[u].first + v.second) {
+				dist[v.first].first = dist[u].first + v.second;
+				dist[v.first].second = u;
+				pq.push(make_pair(dist[v.first].first, v.first));
+			}
+		}
+	}
+
+	return dist;
 }
 
 int main(int argc, char** argv) {
