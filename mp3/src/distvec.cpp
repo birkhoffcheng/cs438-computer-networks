@@ -40,33 +40,25 @@ unordered_map<int, unordered_map<int, int>> read_topo(char *filename, set<int> &
 	return topo;
 }
 
-unordered_map<int, pair<int, int>> dijkstra(unordered_map<int, unordered_map<int, int>> topo, int src) {
+unordered_map<int, pair<int, int>> bellman_ford(unordered_map<int, unordered_map<int, int>> topo, int src) {
 	unordered_map<int, pair<int, int>> dist; // dist[node] = (cost, prev)
 	for (auto node : topo) {
 		dist[node.first] = make_pair(INT_MAX, -1);
 	}
 	dist[src].first = 0;
 
-	priority_queue<pair<int, int>> pq;
-	pq.push(make_pair(0, src));
-
-	while (!pq.empty()) {
-		pair<int, int> p = pq.top();
-		pq.pop();
-		int d = p.first;
-		int u = p.second;
-		if (d > dist[u].first) {
-			continue;
-		}
-		for (auto v : topo[u]) { // v = (node, cost)
-			if (dist[v.first].first > dist[u].first + v.second || dist[v.first].first == dist[u].first + v.second && u < dist[v.first].second) {
-				dist[v.first].first = dist[u].first + v.second;
-				dist[v.first].second = u;
-				pq.push(make_pair(dist[v.first].first, v.first));
+	for (int i = 0; i < topo.size() - 1; i++) {
+		for (auto u : topo) {
+			for (auto v : u.second) {
+				int neighbour_name = v.first;
+				int neighbour_dist = v.second;
+				if ((dist[u.first].first != INT_MAX && dist[neighbour_name].first > dist[u.first].first + neighbour_dist) || (dist[neighbour_name].first == dist[u.first].first + neighbour_dist && u.first < dist[neighbour_name].second)) {
+					dist[neighbour_name].first = dist[u.first].first + neighbour_dist;
+					dist[neighbour_name].second = u.first;
+				}
 			}
 		}
 	}
-
 	return dist;
 }
 
@@ -84,7 +76,7 @@ vector<int> get_path(unordered_map<int, pair<int, int>> dist, int dest) {
 unordered_map<int, unordered_map<int, pair<int, int>>> compute_routing_tables(unordered_map<int, unordered_map<int, int>> topo, FILE *fpOut, set<int> nodes) {
 	unordered_map<int, unordered_map<int, pair<int, int>>> dists;
 	for (auto src : nodes) {
-		auto dist = dijkstra(topo, src);
+		auto dist = bellman_ford(topo, src);
 		dists[src] = dist;
 		for (auto dst : nodes) {
 			if (src == dst) {
