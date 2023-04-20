@@ -58,8 +58,8 @@ unordered_map<int, pair<int, int>> dijkstra(unordered_map<int, unordered_map<int
 		if (d > dist[u].first) {
 			continue;
 		}
-		for (auto v : topo[u]) {
-			if (dist[v.first].first > dist[u].first + v.second) {
+		for (auto v : topo[u]) { // v = (node, cost)
+			if (dist[v.first].first > dist[u].first + v.second || (dist[v.first].first == dist[u].first + v.second && u < dist[v.first].second)) {
 				dist[v.first].first = dist[u].first + v.second;
 				dist[v.first].second = u;
 				pq.push(make_pair(dist[v.first].first, v.first));
