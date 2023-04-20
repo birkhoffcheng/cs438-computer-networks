@@ -103,6 +103,36 @@ void output_routing_table(unordered_map<int, unordered_map<int, int>> topo) {
 	}
 }
 
+void process_message_file(char *filename) {
+	FILE *fp = fopen(filename, "r");
+	if (fp == NULL) {
+		printf("Error: cannot open file %s\n", filename);
+		exit(EXIT_FAILURE);
+	}
+
+	char linebuf[BUFSIZ];
+	char *message;
+	while (fgets(linebuf, BUFSIZ, fp) != NULL) {
+		int src, dest, num_scanned;
+		num_scanned = sscanf(linebuf, "%d %d", &src, &dest);
+		if (num_scanned < 2) {
+			printf("scanned %d items from line: %s", num_scanned, linebuf);
+			continue;
+		}
+		strtok(linebuf, " ");
+		strtok(NULL, " ");
+		message = strtok(NULL, "\n");
+		auto dist = dists[src];
+		auto path = get_path(dist, dest);
+		fprintf(fpOut, "from %d to %d cost %d hops ", src, dest, dist[dest].first);
+		for (int i = 0; i < path.size() - 1; i++) {
+			fprintf(fpOut, "%d ", path[i]);
+		}
+		fprintf(fpOut, "message %s\n", message);
+	}
+	fclose(fp);
+}
+
 int main(int argc, char** argv) {
 	//printf("Number of arguments: %d", argc);
 	if (argc != 4) {
@@ -118,6 +148,7 @@ int main(int argc, char** argv) {
 	}
 
 	output_routing_table(topo);
+	process_message_file(argv[2]);
 
 	fclose(fpOut);
 	return EXIT_SUCCESS;
