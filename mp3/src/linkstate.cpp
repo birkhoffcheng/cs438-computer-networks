@@ -121,6 +121,10 @@ void process_message_file(char *filename, FILE *fpOut, unordered_map<int, unorde
 		strtok(NULL, " ");
 		message = strtok(NULL, "\n");
 		auto dist = dists[src];
+		if (dist[dest].first == INT_MAX) {
+			fprintf(fpOut, "from %d to %d cost infinite hops unreachable message %s\n", src, dest, message);
+			continue;
+		}
 		auto path = get_path(dist, dest);
 		fprintf(fpOut, "from %d to %d cost %d hops ", src, dest, dist[dest].first);
 		for (int i = 0; i < path.size() - 1; i++) {
