@@ -14,11 +14,7 @@
 
 using namespace std;
 
-FILE *fpOut;
-set<int> nodes;
-unordered_map<int, unordered_map<int, pair<int, int>>> dists;
-
-unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
+unordered_map<int, unordered_map<int, int>> read_topo(char *filename, set<int> &nodes) {
 	FILE *fp = fopen(filename, "r");
 	if (fp == NULL) {
 		printf("Error: cannot open file %s\n", filename);
@@ -46,8 +42,8 @@ unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
 
 unordered_map<int, pair<int, int>> dijkstra(unordered_map<int, unordered_map<int, int>> topo, int src) {
 	unordered_map<int, pair<int, int>> dist; // dist[node] = (cost, prev)
-	for (auto node : nodes) {
-		dist[node] = make_pair(INT_MAX, -1);
+	for (auto node : topo) {
+		dist[node.first] = make_pair(INT_MAX, -1);
 	}
 	dist[src].first = 0;
 
@@ -85,7 +81,8 @@ vector<int> get_path(unordered_map<int, pair<int, int>> dist, int dest) {
 	return path;
 }
 
-void output_routing_table(unordered_map<int, unordered_map<int, int>> topo) {
+unordered_map<int, unordered_map<int, pair<int, int>>> compute_routing_tables(unordered_map<int, unordered_map<int, int>> topo, FILE *fpOut, set<int> nodes) {
+	unordered_map<int, unordered_map<int, pair<int, int>>> dists;
 	for (auto src : nodes) {
 		auto dist = dijkstra(topo, src);
 		dists[src] = dist;
@@ -101,9 +98,10 @@ void output_routing_table(unordered_map<int, unordered_map<int, int>> topo) {
 			fprintf(fpOut, "%d %d %d\n", dst, path[1], dist[dst].first);
 		}
 	}
+	return dists;
 }
 
-void process_message_file(char *filename) {
+void process_message_file(char *filename, FILE *fpOut, unordered_map<int, unordered_map<int, pair<int, int>>> dists) {
 	FILE *fp = fopen(filename, "r");
 	if (fp == NULL) {
 		printf("Error: cannot open file %s\n", filename);
@@ -140,15 +138,16 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
-	unordered_map<int, unordered_map<int, int>> topo = read_topo(argv[1]);
-	fpOut = fopen("output.txt", "w");
+	set<int> nodes;
+	auto topo = read_topo(argv[1], nodes);
+	FILE *fpOut = fopen("output.txt", "w");
 	if (fpOut == NULL) {
 		printf("Error: cannot open file output.txt\n");
 		return EXIT_FAILURE;
 	}
 
-	output_routing_table(topo);
-	process_message_file(argv[2]);
+	auto dists = compute_routing_tables(topo, fpOut, nodes);
+	process_message_file(argv[2], fpOut, dists);
 
 	fclose(fpOut);
 	return EXIT_SUCCESS;
