@@ -131,6 +131,35 @@ void process_message_file(char *filename, FILE *fpOut, unordered_map<int, unorde
 	fclose(fp);
 }
 
+void process_change_file(char *filename, char *message_filename, FILE *fpOut, unordered_map<int, unordered_map<int, int>> topo, set<int> nodes) {
+	FILE *fp = fopen(filename, "r");
+	if (fp == NULL) {
+		printf("Error: cannot open file %s\n", filename);
+	}
+
+	char linebuf[BUFSIZ];
+	while (fgets(linebuf, BUFSIZ, fp) != NULL) {
+		int src, dest, cost, num_scanned;
+		num_scanned = sscanf(linebuf, "%d %d %d", &src, &dest, &cost);
+		if (num_scanned < 3) {
+			printf("scanned %d items from line: %s", num_scanned, linebuf);
+			continue;
+		}
+		if (cost == -999) {
+			topo[src].erase(dest);
+			topo[dest].erase(src);
+		}
+		else {
+			topo[src][dest] = cost;
+			topo[dest][src] = cost;
+		}
+		nodes.insert(src);
+		nodes.insert(dest);
+		auto dists = compute_routing_tables(topo, fpOut, nodes);
+		process_message_file(message_filename, fpOut, dists);
+	}
+}
+
 int main(int argc, char** argv) {
 	//printf("Number of arguments: %d", argc);
 	if (argc != 4) {
@@ -148,6 +177,7 @@ int main(int argc, char** argv) {
 
 	auto dists = compute_routing_tables(topo, fpOut, nodes);
 	process_message_file(argv[2], fpOut, dists);
+	process_change_file(argv[3], argv[2], fpOut, topo, nodes);
 
 	fclose(fpOut);
 	return EXIT_SUCCESS;
