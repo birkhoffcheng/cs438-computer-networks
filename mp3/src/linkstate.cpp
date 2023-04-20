@@ -10,11 +10,13 @@
 #include <iostream>
 #include <set>
 #include <unordered_set>
+#include <algorithm>
 
 using namespace std;
 
 FILE *fpOut;
 set<int> nodes;
+unordered_map<int, unordered_map<int, pair<int, int>>> dists;
 
 unordered_map<int, unordered_map<int, int>> read_topo(char *filename) {
 	FILE *fp = fopen(filename, "r");
@@ -72,6 +74,35 @@ unordered_map<int, pair<int, int>> dijkstra(unordered_map<int, unordered_map<int
 	return dist;
 }
 
+vector<int> get_path(unordered_map<int, pair<int, int>> dist, int dest) {
+	vector<int> path;
+	int u = dest;
+	while (u != -1) {
+		path.push_back(u);
+		u = dist[u].second;
+	}
+	reverse(path.begin(), path.end());
+	return path;
+}
+
+void output_routing_table(unordered_map<int, unordered_map<int, int>> topo) {
+	for (auto src : nodes) {
+		auto dist = dijkstra(topo, src);
+		dists[src] = dist;
+		for (auto dst : nodes) {
+			if (src == dst) {
+				fprintf(fpOut, "%d %d %d\n", dst, dst, 0);
+				continue;
+			}
+			if (dist[dst].first == INT_MAX) {
+				continue;
+			}
+			auto path = get_path(dist, dst);
+			fprintf(fpOut, "%d %d %d\n", dst, path[1], dist[dst].first);
+		}
+	}
+}
+
 int main(int argc, char** argv) {
 	//printf("Number of arguments: %d", argc);
 	if (argc != 4) {
@@ -80,9 +111,14 @@ int main(int argc, char** argv) {
 	}
 
 	unordered_map<int, unordered_map<int, int>> topo = read_topo(argv[1]);
-
 	fpOut = fopen("output.txt", "w");
-	fclose(fpOut);
+	if (fpOut == NULL) {
+		printf("Error: cannot open file output.txt\n");
+		return EXIT_FAILURE;
+	}
 
+	output_routing_table(topo);
+
+	fclose(fpOut);
 	return EXIT_SUCCESS;
 }
