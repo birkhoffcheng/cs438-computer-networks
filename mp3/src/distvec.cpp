@@ -160,7 +160,7 @@ void process_change_file(char *filename, char *message_filename, FILE *fpOut, un
 int main(int argc, char** argv) {
 	//printf("Number of arguments: %d", argc);
 	if (argc != 4) {
-		printf("Usage: ./linkstate topofile messagefile changesfile\n");
+		printf("Usage: %s topofile messagefile changesfile\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
