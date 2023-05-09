@@ -139,6 +139,7 @@ void process_change_file(char *filename, char *message_filename, FILE *fpOut, un
 	FILE *fp = fopen(filename, "r");
 	if (fp == NULL) {
 		printf("Error: cannot open file %s\n", filename);
+		exit(EXIT_FAILURE);
 	}
 
 	char linebuf[BUFSIZ];
